@@ -8,6 +8,7 @@ const MODEL: &str = "claude-opus-4-8";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let streaming: bool = std::env::args().any(|arg| arg == "--streaming");
     let api_key = dotenvy::var("ANTHROPIC_API_KEY")?;
     let client = Client::new(api_key);
     let mut chat = Conversation::new(MODEL);
@@ -37,9 +38,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
         // 4. send and print. handle errors without killing the session.
-        match chat.say(&client, prompt).await {
-            Ok(reply) => println!("\n{reply}\n"),
-            Err(e) => eprintln!("\n[error] {e}\n"),
+        if streaming {
+            chat.say_stream(&client, prompt, |piece| {
+                print!("{piece}");
+                let _ = io::stdout().flush();
+            })
+            .await?;
+        } else {
+            match chat.say(&client, prompt).await {
+                Ok(reply) => println!("\n{reply}\n"),
+                Err(e) => eprintln!("\n[error] {e}\n"),
+            }
         }
     }
     println!("Bye! ({} messages exchanged)", chat.history().len());
