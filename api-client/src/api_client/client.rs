@@ -1,5 +1,5 @@
 use crate::api_client::error::ApiError;
-use crate::api_client::models::{MessageParam, MessageRequest};
+use crate::api_client::models::{MessageParam, MessageRequest, MessageResponse};
 
 const BASE_URL: &str = "https://api.anthropic.com/v1/messages";
 
@@ -17,15 +17,17 @@ impl Client {
             base_url: BASE_URL.to_string(),
         }
     }
-
-    pub async fn message(&self, model: &str, prompt: &str) -> Result<String, ApiError> {
+    pub async fn send(
+        &self,
+        model: &str,
+        messages: &[MessageParam],
+    ) -> Result<MessageResponse, ApiError> {
         let request_body = MessageRequest {
             model: model.to_owned(),
             max_tokens: 1024,
-            messages: vec![MessageParam {
-                role: "user".to_owned(),
-                content: prompt.to_owned(),
-            }],
+            messages: messages.to_vec(),
+            system: Some("".to_string()),
+            stream: false,
         };
         let response = self
             .http
@@ -43,6 +45,7 @@ impl Client {
                 body,
             });
         }
-        Ok(response.text().await?)
+        let parsed = response.json::<MessageResponse>().await?;
+        Ok(parsed)
     }
 }
