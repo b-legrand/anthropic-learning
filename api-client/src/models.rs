@@ -37,13 +37,13 @@ pub struct MessageResponse {
     pub stop_reason: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 pub struct MessageDelta {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentDelta {
     TextDelta { text: String },
@@ -52,7 +52,7 @@ pub enum ContentDelta {
     SignatureDelta { signature: String },
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
     MessageStart {/* ignored for now */},
@@ -79,5 +79,39 @@ pub struct ContentBlock {
     pub text: Option<String>,
 }
 
-#[test]
-fn test_event_stream() {}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserializes_text_delta_event() {
+        let json = r#"{"type":"content_block_delta","index":0,
+                       "delta":{"type":"text_delta","text":"Hi"}}"#;
+
+        let event: StreamEvent = serde_json::from_str(json).unwrap();
+
+        assert_eq!(
+            event,
+            StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentDelta::TextDelta { text: "Hi".into() },
+            }
+        );
+    }
+
+    #[test]
+    fn deserializes_lifecycle_events() {
+        // The `type` tag alone selects the variant; empty-bodied events carry no fields.
+        let start: StreamEvent = serde_json::from_str(r#"{"type":"message_start"}"#).unwrap();
+        let stop: StreamEvent = serde_json::from_str(r#"{"type":"message_stop"}"#).unwrap();
+
+        assert_eq!(start, StreamEvent::MessageStart {});
+        assert_eq!(stop, StreamEvent::MessageStop {});
+    }
+
+    #[test]
+    fn unmodeled_event_type_is_an_error() {
+        // An unknown tag has no matching variant, so deserialization fails.
+        assert!(serde_json::from_str::<StreamEvent>(r#"{"type":"ping"}"#).is_err());
+    }
+}

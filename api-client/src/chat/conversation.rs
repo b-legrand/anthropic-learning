@@ -3,7 +3,6 @@ use api_client::error::ApiError;
 use api_client::models::{ContentDelta, MessageParam, StreamEvent};
 
 use futures_util::StreamExt;
-use memchr::memmem::find;
 
 pub struct Conversation {
     model: String,
@@ -42,37 +41,19 @@ impl Conversation {
     ) -> Result<&str, ApiError> {
         // 1. record user message
         self.messages.push(MessageParam::user(text));
-        // 2. send full history, receive stream
+        // 2. send full history, receive a stream of modeled events
         let stream = client.stream(&self.model, &self.messages).await?;
         futures_util::pin_mut!(stream);
-        // 3. accumulate the assistant response from SSE events
-        let mut buf: Vec<u8> = Vec::new();
+        // 3. accumulate the assistant response from the text deltas
         let mut reply = String::new();
-        while let Some(chunk) = stream.next().await {
-            buf.extend_from_slice(&chunk?);
-            // Pull out each complete event (events are separated by a blank line).
-            while let Some(pos) = find(&buf, b"\n\n") {
-                if let Ok(event) = std::str::from_utf8(&buf[..pos]) {
-                    for line in event.lines() {
-                        let Some(json) = line.strip_prefix("data: ") else {
-                            continue; // skip "event:" lines
-                        };
-                        if json.trim() == "[DONE]" {
-                            continue;
-                        }
-                        // Skip malformed JSON, unmodeled events, and non-text deltas alike.
-                        let Ok(StreamEvent::ContentBlockDelta {
-                            delta: ContentDelta::TextDelta { text },
-                            ..
-                        }) = serde_json::from_str(json)
-                        else {
-                            continue;
-                        };
-                        on_text(&text);
-                        reply.push_str(&text);
-                    }
-                }
-                buf.drain(..pos + 2);
+        while let Some(event) = stream.next().await {
+            if let StreamEvent::ContentBlockDelta {
+                delta: ContentDelta::TextDelta { text },
+                ..
+            } = event?
+            {
+                on_text(&text);
+                reply.push_str(&text);
             }
         }
         self.messages.push(MessageParam::assistant(reply));
