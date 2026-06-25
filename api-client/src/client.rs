@@ -3,8 +3,8 @@ use bytes::Bytes;
 use futures_util::{Stream, StreamExt};
 use reqwest::Response;
 
-use crate::api_client::error::ApiError;
-use crate::api_client::models::{MessageParam, MessageRequest, MessageResponse};
+use crate::error::ApiError;
+use crate::models::{MessageParam, MessageRequest, MessageResponse};
 
 const BASE_URL: &str = "https://api.anthropic.com/v1/messages";
 
